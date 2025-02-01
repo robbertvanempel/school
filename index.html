@@ -2,339 +2,264 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <title>Educatieve Mario Bros</title>
+  <title>Tetris</title>
   <style>
     body {
       margin: 0;
-      overflow: hidden;
-      background: #87ceeb;
-      font-family: sans-serif;
-    }
-    canvas {
-      display: block;
-      background: #87ceeb;
-    }
-    /* Overlays voor vraag en score */
-    #questionOverlay, #scoreOverlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.7);
+      background: #000;
       display: flex;
       justify-content: center;
       align-items: center;
-      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      font-family: sans-serif;
       color: #fff;
-      font-size: 18px;
-      z-index: 10;
     }
-    #questionOverlay.hidden, #scoreOverlay.hidden {
-      display: none;
+    #score {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      font-size: 20px;
     }
-    #questionOverlay button, #scoreOverlay button {
-      margin: 5px;
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
+    canvas {
+      border: 2px solid #fff;
+      background: #000;
     }
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="800" height="400"></canvas>
-  <div id="questionOverlay" class="hidden"></div>
-  <div id="scoreOverlay" class="hidden"></div>
+  <div id="score">Score: 0</div>
+  <canvas id="tetris" width="240" height="400"></canvas>
   <script>
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
+    const canvas = document.getElementById('tetris');
+    const context = canvas.getContext('2d');
+    context.scale(20, 20);
 
-    // Spelinstellingen
-    const gravity = 0.5;
-    const jumpStrength = -10;
-    const levelWidth = 2000; // Totale breedte van het level
-    const levelHeight = canvas.height;
-
-    // Spelstatus
-    let gamePaused = false;
-    let levelComplete = false;
-    let score = 0;
-    let answerRecords = []; // Voor elk antwoord: {question, selected, correct, correctAnswer}
-
-    // Speler (Mario als emoji)
-    const player = {
-      x: 50,
-      y: levelHeight - 60,
-      width: 30,
-      height: 30,
-      vx: 0,
-      vy: 0,
-      speed: 3,
-      emoji: '😀'
-    };
-
-    // Platforms (x, y, breedte, hoogte)
-    const platforms = [
-      {x: 0, y: levelHeight - 20, width: levelWidth, height: 20}, // grond
-      {x: 200, y: 300, width: 150, height: 15},
-      {x: 500, y: 250, width: 150, height: 15},
-      {x: 800, y: 200, width: 150, height: 15},
-      {x: 1100, y: 300, width: 150, height: 15},
-      {x: 1400, y: 250, width: 150, height: 15},
-      {x: 1700, y: 200, width: 150, height: 15}
-    ];
-
-    // Muntjes (coins) – elke munt activeert een TWV (Tweede Wereldoorlog) vraag
-    // Elke munt heeft x, y, grootte, en flags voor verzameld en vraag gesteld
-    const coins = [
-      {x: 230, y: 260, size: 20, collected: false, questionAsked: false, emoji: '🪙'},
-      {x: 530, y: 210, size: 20, collected: false, questionAsked: false, emoji: '🪙'},
-      {x: 830, y: 160, size: 20, collected: false, questionAsked: false, emoji: '🪙'},
-      {x: 1130, y: 260, size: 20, collected: false, questionAsked: false, emoji: '🪙'},
-      {x: 1430, y: 210, size: 20, collected: false, questionAsked: false, emoji: '🪙'},
-      {x: 1730, y: 160, size: 20, collected: false, questionAsked: false, emoji: '🪙'}
-    ];
-
-    // Paddenstoelen als emoji (decoratief of voor power-ups)
-    const mushrooms = [
-      {x: 350, y: levelHeight - 40, size: 20, emoji: '🍄'},
-      {x: 900, y: levelHeight - 40, size: 20, emoji: '🍄'},
-      {x: 1500, y: levelHeight - 40, size: 20, emoji: '🍄'}
-    ];
-
-    // Eindvlag (finish) – raken betekent level voltooid
-    const finish = { x: levelWidth - 50, y: levelHeight - 80, width: 30, height: 60, emoji: '🏁' };
-
-    // Tweede Wereldoorlog (TWV) vragen
-    const questions = [
-      {
-        question: "Welke gebeurtenis wordt beschouwd als het begin van de Tweede Wereldoorlog?",
-        options: ["De invasie van Polen", "De aanval op Pearl Harbor", "De Slag om Stalingrad", "De D-Day landing"],
-        correctIndex: 0
-      },
-      {
-        question: "In welk jaar eindigde de Tweede Wereldoorlog?",
-        options: ["1943", "1944", "1945", "1946"],
-        correctIndex: 2
-      },
-      {
-        question: "Welke landen vormden de Asmogendheden?",
-        options: ["Duitsland, Italië, Japan", "Duitsland, Sovjet-Unie, Italië", "Italië, Japan, Frankrijk", "Japan, Duitsland, Groot-Brittannië"],
-        correctIndex: 0
+    function createMatrix(w, h) {
+      const matrix = [];
+      while (h--) {
+        matrix.push(new Array(w).fill(0));
       }
-    ];
-    let questionIndex = 0; // Vragen worden sequentieel aangeboden
+      return matrix;
+    }
 
-    // Overlays
-    const questionOverlay = document.getElementById('questionOverlay');
-    const scoreOverlay = document.getElementById('scoreOverlay');
-    let questionOverlayActive = false;
-
-    // Invoer
-    const keys = {};
-    document.addEventListener('keydown', e => {
-      if (!gamePaused && !levelComplete && !questionOverlayActive) {
-        keys[e.code] = true;
+    function createPiece(type) {
+      switch(type) {
+        case 'T':
+          return [
+            [0, 1, 0],
+            [1, 1, 1],
+            [0, 0, 0],
+          ];
+        case 'O':
+          return [
+            [2, 2],
+            [2, 2],
+          ];
+        case 'L':
+          return [
+            [0, 3, 0],
+            [0, 3, 0],
+            [0, 3, 3],
+          ];
+        case 'J':
+          return [
+            [0, 4, 0],
+            [0, 4, 0],
+            [4, 4, 0],
+          ];
+        case 'I':
+          return [
+            [0, 5, 0, 0],
+            [0, 5, 0, 0],
+            [0, 5, 0, 0],
+            [0, 5, 0, 0],
+          ];
+        case 'S':
+          return [
+            [0, 6, 6],
+            [6, 6, 0],
+            [0, 0, 0],
+          ];
+        case 'Z':
+          return [
+            [7, 7, 0],
+            [0, 7, 7],
+            [0, 0, 0],
+          ];
       }
-    });
-    document.addEventListener('keyup', e => {
-      keys[e.code] = false;
-    });
+    }
 
-    // Toon vraag als een munt wordt geraakt
-    function showQuestion(coin) {
-      gamePaused = true;
-      questionOverlayActive = true;
-      const q = questions[questionIndex % questions.length];
-      questionIndex++;
-      questionOverlay.innerHTML = "";
-      const qText = document.createElement('div');
-      qText.style.marginBottom = '20px';
-      qText.style.textAlign = 'center';
-      qText.innerText = q.question;
-      questionOverlay.appendChild(qText);
+    const colors = [
+      null,
+      '#FF0D72', // T
+      '#0DC2FF', // O
+      '#0DFF72', // L
+      '#F538FF', // J
+      '#FF8E0D', // I
+      '#FFE138', // S
+      '#3877FF'  // Z
+    ];
 
-      q.options.forEach((option, i) => {
-        const btn = document.createElement('button');
-        btn.innerText = option;
-        btn.addEventListener('click', () => {
-          const isCorrect = (i === q.correctIndex);
-          if (isCorrect) {
-            coin.collected = true;
-            score++;
+    function collide(arena, player) {
+      const m = player.matrix;
+      const o = player.pos;
+      for (let y = 0; y < m.length; ++y) {
+        for (let x = 0; x < m[y].length; ++x) {
+          if (m[y][x] !== 0 &&
+             (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+            return true;
           }
-          answerRecords.push({
-            question: q.question,
-            selected: option,
-            correct: isCorrect,
-            correctAnswer: q.options[q.correctIndex]
-          });
-          if (!isCorrect) {
-            qText.innerText += "\n\nHelaas, het juiste antwoord was: " + q.options[q.correctIndex];
+        }
+      }
+      return false;
+    }
+
+    function merge(arena, player) {
+      player.matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            arena[y + player.pos.y][x + player.pos.x] = value;
           }
-          setTimeout(() => {
-            questionOverlay.classList.add('hidden');
-            questionOverlayActive = false;
-            gamePaused = false;
-          }, 2000);
         });
-        questionOverlay.appendChild(btn);
       });
-      questionOverlay.classList.remove('hidden');
     }
 
-    // Toon scoreoverzicht als level voltooid is
-    function showScoreOverview() {
-      scoreOverlay.innerHTML = "";
-      const title = document.createElement('h2');
-      title.innerText = "Level Compleet!";
-      scoreOverlay.appendChild(title);
-      const scoreText = document.createElement('p');
-      scoreText.innerText = "Je score: " + score + " punt(en)";
-      scoreOverlay.appendChild(scoreText);
-      const listTitle = document.createElement('h3');
-      listTitle.innerText = "Antwoordoverzicht:";
-      scoreOverlay.appendChild(listTitle);
-      answerRecords.forEach((rec, index) => {
-        const p = document.createElement('p');
-        p.innerText = (index + 1) + ". " + rec.question + "\nJouw antwoord: " + rec.selected +
-                      (rec.correct ? " (Correct)" : " (Fout, juist: " + rec.correctAnswer + ")");
-        scoreOverlay.appendChild(p);
+    function arenaSweep() {
+      let rowCount = 1;
+      outer: for (let y = arena.length - 1; y >= 0; --y) {
+        for (let x = 0; x < arena[y].length; ++x) {
+          if (arena[y][x] === 0) {
+            continue outer;
+          }
+        }
+        const row = arena.splice(y, 1)[0].fill(0);
+        arena.unshift(row);
+        ++y;
+        player.score += rowCount * 10;
+        rowCount *= 2;
+      }
+    }
+
+    function drawMatrix(matrix, offset) {
+      matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            context.fillStyle = colors[value];
+            context.fillRect(x + offset.x, y + offset.y, 1, 1);
+          }
+        });
       });
-      const restartBtn = document.createElement('button');
-      restartBtn.innerText = "Opnieuw spelen";
-      restartBtn.addEventListener('click', () => location.reload());
-      scoreOverlay.appendChild(restartBtn);
-      scoreOverlay.classList.remove('hidden');
     }
 
-    // Helper: rechthoek botsing
-    function rectIntersect(a, b) {
-      return a.x < b.x + b.width &&
-             a.x + a.width > b.x &&
-             a.y < b.y + b.height &&
-             a.y + a.height > b.y;
+    function draw() {
+      context.fillStyle = '#000';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      drawMatrix(arena, {x: 0, y: 0});
+      drawMatrix(player.matrix, player.pos);
     }
 
-    // Game-loop en camera
-    let cameraX = 0;
-    function update() {
-      if (!gamePaused && !levelComplete) {
-        // Beweging
-        if (keys["ArrowLeft"]) {
-          player.vx = -player.speed;
-        } else if (keys["ArrowRight"]) {
-          player.vx = player.speed;
-        } else {
-          player.vx = 0;
-        }
-        if (keys["Space"] && onGround()) {
-          player.vy = jumpStrength;
-        }
-        player.vy += gravity;
-        player.x += player.vx;
-        player.y += player.vy;
-
-        // Houd speler binnen levelgrenzen
-        if (player.x < 0) player.x = 0;
-        if (player.x + player.width > levelWidth) player.x = levelWidth - player.width;
-
-        // Platform botsing (eenvoudige verticale botsing)
-        platforms.forEach(platform => {
-          if (player.vy >= 0) {
-            const pBox = {x: player.x, y: player.y, width: player.width, height: player.height};
-            const platBox = {x: platform.x, y: platform.y, width: platform.width, height: platform.height};
-            if (rectIntersect(pBox, platBox)) {
-              player.y = platform.y - player.height;
-              player.vy = 0;
-            }
-          }
-        });
-
-        // Controleer op botsing met muntjes
-        coins.forEach(coin => {
-          if (!coin.collected && !coin.questionAsked) {
-            const coinBox = {x: coin.x, y: coin.y, width: coin.size, height: coin.size};
-            const pBox = {x: player.x, y: player.y, width: player.width, height: player.height};
-            if (rectIntersect(pBox, coinBox)) {
-              coin.questionAsked = true;
-              showQuestion(coin);
-            }
-          }
-        });
-
-        // Controleer of finish bereikt is
-        const finishBox = {x: finish.x, y: finish.y, width: finish.width, height: finish.height};
-        const pBox = {x: player.x, y: player.y, width: player.width, height: player.height};
-        if (rectIntersect(pBox, finishBox)) {
-          levelComplete = true;
-          gamePaused = true;
-          showScoreOverview();
+    function rotate(matrix, dir) {
+      for (let y = 0; y < matrix.length; ++y) {
+        for (let x = 0; x < y; ++x) {
+          [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
         }
       }
+      if (dir > 0) {
+        matrix.forEach(row => row.reverse());
+      } else {
+        matrix.reverse();
+      }
+    }
 
-      // Camera volgt speler
-      cameraX = player.x - canvas.width / 2;
-      if (cameraX < 0) cameraX = 0;
-      if (cameraX > levelWidth - canvas.width) cameraX = levelWidth - canvas.width;
+    function playerRotate(dir) {
+      const pos = player.pos.x;
+      let offset = 1;
+      rotate(player.matrix, dir);
+      while (collide(arena, player)) {
+        player.pos.x += offset;
+        offset = -(offset + (offset > 0 ? 1 : -1));
+        if (offset > player.matrix[0].length) {
+          rotate(player.matrix, -dir);
+          player.pos.x = pos;
+          return;
+        }
+      }
+    }
 
+    function playerDrop() {
+      player.pos.y++;
+      if (collide(arena, player)) {
+        player.pos.y--;
+        merge(arena, player);
+        playerReset();
+        arenaSweep();
+        updateScore();
+      }
+      dropCounter = 0;
+    }
+
+    function playerMove(dir) {
+      player.pos.x += dir;
+      if (collide(arena, player)) {
+        player.pos.x -= dir;
+      }
+    }
+
+    function playerReset() {
+      const pieces = 'TJLOSZI';
+      player.matrix = createPiece(pieces[Math.floor(Math.random() * pieces.length)]);
+      player.pos.y = 0;
+      player.pos.x = Math.floor(arena[0].length / 2) - Math.floor(player.matrix[0].length / 2);
+      if (collide(arena, player)) {
+        arena.forEach(row => row.fill(0));
+        player.score = 0;
+        updateScore();
+      }
+    }
+
+    let dropCounter = 0;
+    let dropInterval = 1000;
+    let lastTime = 0;
+
+    function update(time = 0) {
+      const deltaTime = time - lastTime;
+      lastTime = time;
+      dropCounter += deltaTime;
+      if (dropCounter > dropInterval) {
+        playerDrop();
+      }
       draw();
       requestAnimationFrame(update);
     }
 
-    // Bepaal of speler op een platform staat
-    function onGround() {
-      return platforms.some(platform =>
-        (player.y + player.height >= platform.y - 1 && player.y + player.height <= platform.y + platform.height)
-      );
+    function updateScore() {
+      document.getElementById('score').innerText = 'Score: ' + player.score;
     }
 
-    // Tekenen
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      ctx.translate(-cameraX, 0);
+    const arena = createMatrix(12, 20);
+    const player = {
+      pos: {x: 0, y: 0},
+      matrix: null,
+      score: 0,
+    };
 
-      // Achtergrond
-      ctx.fillStyle = "#87ceeb";
-      ctx.fillRect(cameraX, 0, canvas.width, canvas.height);
+    document.addEventListener('keydown', event => {
+      if (event.keyCode === 37) {
+        playerMove(-1);
+      } else if (event.keyCode === 39) {
+        playerMove(1);
+      } else if (event.keyCode === 40) {
+        playerDrop();
+      } else if (event.keyCode === 81) { // Q: rotate left
+        playerRotate(-1);
+      } else if (event.keyCode === 87) { // W: rotate right
+        playerRotate(1);
+      }
+    });
 
-      // Platforms
-      ctx.fillStyle = "#654321";
-      platforms.forEach(platform => {
-        ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
-      });
-
-      // Muntjes
-      coins.forEach(coin => {
-        if (!coin.collected) {
-          ctx.font = "20px sans-serif";
-          ctx.fillText(coin.emoji, coin.x, coin.y + coin.size);
-        }
-      });
-
-      // Paddenstoelen
-      mushrooms.forEach(mushroom => {
-        ctx.font = "20px sans-serif";
-        ctx.fillText(mushroom.emoji, mushroom.x, mushroom.y + mushroom.size);
-      });
-
-      // Finishvlag
-      ctx.font = "30px sans-serif";
-      ctx.fillText(finish.emoji, finish.x, finish.y + finish.height);
-
-      // Speler (Mario)
-      ctx.font = "30px sans-serif";
-      ctx.fillText(player.emoji, player.x, player.y + player.height);
-
-      ctx.restore();
-
-      // Score tonen
-      ctx.fillStyle = "#000";
-      ctx.font = "20px sans-serif";
-      ctx.fillText("Score: " + score, 10, 30);
-    }
-
+    playerReset();
+    updateScore();
     update();
   </script>
 </body>
